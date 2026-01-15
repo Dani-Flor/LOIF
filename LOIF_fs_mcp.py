@@ -195,6 +195,7 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
         print(f'Line {i}')
         Ta = Ta_sets[i]
         Sa = pd.Series(Ta)
+        # print(Sa)
         gamma = 1e-30
         beta = 1e-30
         ML_labels = []
@@ -207,14 +208,16 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
         current_precision = 0.0
         while(current_precision < desired_precision):
             Sa = Sa[abs(Sa) >= gamma]       #Find LOIFs greater than gamma
+            # print(Sa)
             OL_labels = [0] + Sa.index.to_list()   
             
             Report = knn_model(ML_labels=ML_labels,OL_labels=OL_labels,k=8)
             current_precision = round(Report['0']['precision'], 2)
 
 
-            if current_precision >= desired_precision:
+            if (current_precision >= desired_precision) or (len(Sa)==1):
                 mingamma = gamma
+                break
             elif gamma < 0.1:
                 gamma = gamma*(1e1)
             else:
@@ -224,7 +227,12 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
         while(current_f1score < desired_f1score):
             Sa = Sa[abs(Sa) >= mingamma]
             Sa = Sa.sort_values(ascending=False)  #Organize in descending order
-
+            
+            if Sa.empty:
+                minbeta = 0
+                final_f1s.append(0)
+                break
+                # print(Sa)
             keep_LOIFs = [float(Sa.iloc[0])]
             keep_Index = [int(Sa.index[0])]
 
@@ -244,9 +252,8 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
             elif beta < 0.1:
                 beta = beta*(1e1)
             else:
-                beta = round(beta + 0.1,2) 
+                beta = round(beta + 0.05,2) 
      
-
         min_gammas.append(mingamma)
         min_betas.append(minbeta) 
         set_lenghts.append(len(Sa.index.to_list()))    
@@ -257,7 +264,7 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
     DF=DF.set_index('Lines')
 
         
-    DF.to_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1score}')
+    # DF.to_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1score}.csv')
     return DF
 
 
@@ -303,26 +310,45 @@ def max_coverage_greedy(mgb_df,OTL_num):
 
     Report = knn_model(k=8,ML_labels=ML_labels,OL_labels=OL_labels)
     print(pd.DataFrame(Report))
+    return [OTLs,collection_set,Report['macro avg']['f1-score']]
 
 def main(k,desired_precision,desired_f1):
     print('================  k-neighbors={0}, Desired Precision(For Normal Conditions)={1}, Desired F1-Score (Overall Performance)={2} ================'.format(k,desired_precision,desired_f1))
     #Checks if minimum gamma results already exist, if not it calculates them first
     os.chdir(folder_path)                     #Update path to new folder (Min Gamma Results)
-    if os.path.exists(f'Minimum_gamma_per_OPL_k{k}_dp{desired_precision}_df1{desired_f1}.csv'):     #If results for a certain precision and F1-score exist read the CSV file contaiing the reults
-        mgb_df = pd.read_csv(f'Minimum_gamma_per_OPL_k{k}_dp{desired_precision}_df1{desired_f1}.csv',index_col=0)  #Read CSV file
+    if os.path.exists(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}.csv'):     #If results for a certain precision and F1-score exist read the CSV file contaiing the reults
+        mgb_df = pd.read_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}.csv',index_col=0)  #Read CSV file
     else:
         os.chdir(current_path)                     #Update path to new folder (Min Gamma Results)                                                                                     #IF no results exists, begin calculating minimum gamma and save results to a CSV file.
         mgb_df = calc_min_gamma_beta(k=8,desired_f1score=desired_precision,desired_precision=desired_f1)
         os.chdir(folder_path)                     #Update path to new folder (Min Gamma Results)
-        mgb_df.to_csv(f'Minimum_gamma_per_OPL_k{k}_dp{desired_precision}_df1{desired_f1}.csv')
-        mgb_df = pd.read_csv(f'Minimum_gamma_per_OPL_k{k}_dp{desired_precision}_df1{desired_f1}.csv',index_col=0)  #Read CSV file
+        mgb_df.to_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}.csv')
+        mgb_df = pd.read_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}.csv',index_col=0)  #Read CSV file
         
     
-    max_coverage_greedy(mgb_df=mgb_df.sort_values(by='Total_outages',ascending=False),OTL_num=1000)
-
+    MCP = max_coverage_greedy(mgb_df=mgb_df.sort_values(by='Total_outages',ascending=False),OTL_num=200)
+    return MCP
+DPs = []
+DF1s = []
+OTL_sets = []
+OTL_lengths = []
+collection_sets = []
+collection_lenghts = []
+f1scores_2 = []
 for i in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]:
     for j in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]:
-        main(k=8,desired_f1=i,desired_precision=j)
+        DF1s.append(i)
+        DPs.append(j)
+        MCP = main(k=8,desired_f1=i,desired_precision=j)
+        OTL_sets.append(MCP[0])
+        OTL_lengths.append(len(MCP[0]))
+        collection_sets.append(MCP[1])
+        collection_lenghts.append(len(MCP[1]))
+        f1scores_2.append(MCP[2])
+
+DF = pd.DataFrame({'Desired Precision':DPs,'Desired F1-Score':DF1s,'Total OTLs':OTL_lengths,'Total Outages Covered':collection_lenghts,'Actual F1Score':f1scores_2,'OTL Sets':OTL_sets,'Covered Sets':collection_sets})
+print(DF)
+DF.to_csv(f'MCP_Results_{case}.csv')
 
 
 print('===================Code Executed============================')

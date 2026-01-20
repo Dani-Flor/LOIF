@@ -50,7 +50,7 @@ R = zeros(num_scenarios, num_samples+1);
 R(:,1) = 0:num_lines;
 % display(R)
 Result_Holder = ones(num_scenarios,1);         %Results of All outages and normal conditions
-display(Result_Holder)
+% display(Result_Holder)
 
 %Orignal PD/QD
 PD_copy = mpc_copy.bus(:, PD);

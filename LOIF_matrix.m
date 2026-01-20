@@ -48,4 +48,9 @@ table.Properties.RowNames = all_rows;
 table.Properties.VariableNames = all_columns;
 
 writetable(table,sprintf('LOIFmatrix_%s.csv',mpc_string))
+
+table = array2table(LODF);
+table.Properties.RowNames = all_rows;
+table.Properties.VariableNames = all_columns;
+writetable(table, sprintf('LODFmatrix_%s.csv', mpc_string));
 end

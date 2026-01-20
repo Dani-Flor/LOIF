@@ -10,9 +10,8 @@
 #       -LOIF Matrix CSV: Holds the LOIFs (Impact of each outage on all lines)
 #           > From Matlab, these files have names starting with "LOIFmatrix_..." 
 # This script will open a directory window and have the user select which files they want to use (READ Window Title to Know which File Python Wants)
-# *REMARK: Make Sure the System you are using is the same on all files (If you accidently select files from another system you will get an error)
+# *REMARK: Make Sure the System you are using is the same on all files (If you accidentally select files from another system you will get an error)
 #
-#  The user also has to specify whether the training data uses AC or DC solutions
 ##################################  Script Functions ##############################################################################
 #  -select_files(t): 
 #   This function opens a file directory and asks the user for required csv files
@@ -74,84 +73,12 @@ import time
 import tkinter as tk
 from tkinter import filedialog
 import re
+import random
 
-start_time = time.perf_counter()
-###USER INPUTS#######
-#Read Bracnh Data CSV collected from MATLAB using MATPOWER
-root = tk.Tk()
-root.withdraw() 
-case = ''
-def select_files(t):
-    if t == 1:
-        title = "SELECT CONVERGENCE FILE OF THE SYSTEM YOU ARE INTERESTED IN"
-    elif t == 2:
-        title = "SELECT BRANCH DATA FILE OF THE SYSTEM YOU ARE INTERESTED IN (MAKE SURE IT IS THE SAME SYSTEM YOU INITIALLY CHOSE)"
-    elif t == 3:
-        title = 'SELECT LOIF MATRIX FILE OF THE SYSTEM YOU ARE INTERESTED IN (MAKE SURE IT IS THE SAME SYSTEM YOU INITIALLY CHOSE)'
-    fpath = filedialog.askopenfilename(
-        title=title,
-        initialdir="/", # Optional: sets the initial directory
-        filetypes=(
-            ("CSV files", "*.csv"),
-            ("All files", "*.*")
-        )
-    )
-    print(fpath)
-    return fpath
-
-#Select Which Files to Use
-fpath = select_files(1)
-Convergence_Data = pd.read_csv(fpath,index_col=0,header=None)
-fpath = select_files(3)
-LOIF = pd.read_csv(fpath)  #Excluded lines are not removed in matlab
-case = re.search(r"LOIFmatrix_(case.+)\.csv", fpath).group(1)
-print(case)
-fpath = select_files(2)
-Training_all = pd.read_csv(fpath)
-Training_all.index = Training_all['Label']
-
-DC_or_AC = 'DC'
-####User Inputs
-it = 0
-
-#Script Calculates How Many Transmission Lines There are
-num_lines = len(LOIF.index.to_list())
-print(f'Total Number of Transmission Lines: ',num_lines)
-#Because We Ignore outages that don't converge when disconnected, we want to see all outages that we collected data on (possible outages)
-#Script Tells us how many lines converged, which are the lines we will focus on.
-outage_set = Convergence_Data.loc[Convergence_Data[1] ==1].index.to_list()
-outage_set = outage_set[1:]
-#Script Tells us how many lines did not converge, which are the lines we will ignore
-excluded_set = Convergence_Data.loc[Convergence_Data[1] ==0].index.to_list()
-print(f'Possible Line Outages ({len(outage_set)}):\n',outage_set)
-print(f'Excluded Transmission Lines ({len(excluded_set)}):\n',excluded_set)
-
-
-#Add row labels to LOIF matrix
-line_numbers = [i for i in range(1,num_lines+1)]
-LOIF.index = line_numbers
-LOIF.columns = line_numbers
-LOIF = LOIF.drop(index=excluded_set,columns=excluded_set)  #Remove Rows and Columns related to excluded lines
-
-
-current_path = os.getcwd()   #Get the address of current path
-folder_path = f'{current_path}/Final_Sa_{case}_{DC_or_AC}' #Create Path for New Folder to store (Min Gamma Results)
-os.makedirs(folder_path, exist_ok=True)   #If the Folder already exist do nothing, if not then create new folder
-
-
-Ta_sets = {}
-for i in LOIF.index:   ## i is each OTL (rows in LOIF matrix)
-    A = LOIF.loc[i,:]   #A becomes a pandas series where each element corresponds to an outage in the system
-    Ta_sets[i] = A     #This is the initialization stage where we begin with all outages possible outages for each observation point.
-    # print(Ta_sets[i])
-
-Ta_sets = pd.DataFrame(Ta_sets)
 
 
 # #This function create a KNN model where we specify the which features we are interested in and the outages we want to test using k neighbors
-
-
-def knn_model(ML_labels,OL_labels,k):
+def knn_model(ML_labels,OL_labels,k,output):
     #In training data we filter out data to only look at the obsevation points (Features) and outages we are interested in.
     Training_BD = Training_all.loc[OL_labels,ML_labels]
 
@@ -175,7 +102,8 @@ def knn_model(ML_labels,OL_labels,k):
 
     #Collect classification report between predicted labels and real labels from testing data
     Report= classification_report(True_Labels,Predictions,output_dict=True,zero_division=0)
-    # print(classification_report(True_Labels,Predictions))
+    if output == True:
+        print(classification_report(True_Labels,Predictions),file=f)
     return Report
 
 
@@ -191,8 +119,8 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
     index_col = []
 
 
-    for i in LOIF.index:
-        print(f'Line {i}')
+    for i in LOIF.index[:]:
+        # print(f'Line {i}')
         Ta = Ta_sets[i]
         Sa = pd.Series(Ta)
         # print(Sa)
@@ -206,17 +134,19 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
         ML_labels.append(f'Label')
 
         current_precision = 0.0
-        while(current_precision < desired_precision):
+        while(1):
             Sa = Sa[abs(Sa) >= gamma]       #Find LOIFs greater than gamma
             # print(Sa)
             OL_labels = [0] + Sa.index.to_list()   
             
-            Report = knn_model(ML_labels=ML_labels,OL_labels=OL_labels,k=8)
+            Report = knn_model(ML_labels=ML_labels,OL_labels=OL_labels,k=8,output=False)
             current_precision = round(Report['0']['precision'], 2)
 
 
-            if (current_precision >= desired_precision) or (len(Sa)==1):
+            if (current_precision >= desired_precision) or (len(Sa)==1) or (gamma == 10):
                 mingamma = gamma
+                print(f'Line {i} --> gamma: {mingamma}',file=f)
+                Report = knn_model(ML_labels=ML_labels,OL_labels=OL_labels,k=8,output=True)
                 break
             elif gamma < 0.1:
                 gamma = gamma*(1e1)
@@ -224,7 +154,7 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
                 gamma = round(gamma + 0.1,2)
 
         current_f1score = 0.0
-        while(current_f1score < desired_f1score):
+        while(1):
             Sa = Sa[abs(Sa) >= mingamma]
             Sa = Sa.sort_values(ascending=False)  #Organize in descending order
             
@@ -243,10 +173,12 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
 
             Sa = Sa[keep_Index]
             OL_labels = [0] + Sa.index.to_list()
-            Report = knn_model(ML_labels=ML_labels,OL_labels=OL_labels,k=k)
+            Report = knn_model(ML_labels=ML_labels,OL_labels=OL_labels,k=k,output=False)
             current_f1score = Report['macro avg']['f1-score']       #Get F1-Score from classification report
-            if (current_f1score >= desired_f1score) or (len(keep_Index)==1):
+            if (current_f1score >= desired_f1score) or (len(keep_Index)==1) or (beta == 10):
                 minbeta = beta
+                print(f'Line {i} --> beta: {minbeta}',file=f)
+                Report = knn_model(ML_labels=ML_labels,OL_labels=OL_labels,k=k,output=True)
                 final_f1s.append(current_f1score)
                 break
             elif beta < 0.1:
@@ -270,8 +202,8 @@ def calc_min_gamma_beta(k,desired_precision,desired_f1score):
 
 def max_coverage_greedy(mgb_df,OTL_num):
     OTLs = []
-    print(mgb_df)
-    print('-----------------GREEDY ALGORITHM-------------------')
+    # print(mgb_df)
+    print('-----------------MCP GREEDY ALGORITHM-------------------',file=f)
     collection_set = []  #Will be used to store the outages we have already covered
     for i in range(0,OTL_num):
         diffs = {} #Will hold the number of new elements each subset has so that we can compare all of them at the end
@@ -286,7 +218,7 @@ def max_coverage_greedy(mgb_df,OTL_num):
             diffs[f'{j}'] = len(list(set(current_set).difference(collection_set)))   #Counts the number of uncovered outages
 
         largest_OPL = max(diffs, key=diffs.get)   #Gets the Sa subset with the largest number of elements not yet covered in collection set.
-        print(f'Largest Subset (Iteration {i+1}): {largest_OPL} --> {diffs[largest_OPL]}')
+        print(f'Largest Subset (Iteration {i+1}): {largest_OPL} --> {diffs[largest_OPL]}',file=f)
         if diffs[largest_OPL] == 0:  #If there are no more new elements stop iteration
             break
         else:                        #If there are still uncovered elements continue iteration and update collection set.
@@ -295,9 +227,9 @@ def max_coverage_greedy(mgb_df,OTL_num):
             current_set = ast.literal_eval(current_set)
             collection_set = list(set(collection_set + current_set))
 
-    print(f'OTLs ({len(OTLs)}):\n',OTLs)
+    print(f'OTLs ({len(OTLs)}):\n',OTLs,file=f)
 
-    print(f'Covered Outages({len(collection_set)}):\n',collection_set)
+    print(f'Covered Outages({len(collection_set)}):\n',collection_set,file=f)
     ML_labels = []
     for i in OTLs:
         ML_labels.append(f'PF Line {i}')  
@@ -308,26 +240,170 @@ def max_coverage_greedy(mgb_df,OTL_num):
 
     OL_labels = [0] + collection_set
 
-    Report = knn_model(k=8,ML_labels=ML_labels,OL_labels=OL_labels)
-    print(pd.DataFrame(Report))
+    Report = knn_model(k=8,ML_labels=ML_labels,OL_labels=OL_labels,output=True)
+    print('---------------------End Of MCP GREEDY ALGORITHM----------------------',file=f)
+    # print(pd.DataFrame(Report))
     return [OTLs,collection_set,Report['macro avg']['f1-score']]
 
+def random_OTL(MCP):
+    print('------------------RANDOM OTL SELECTION------------------------------------',file=f)
+    scores = []
+    for i in range(1,11):
+        print('\n',file=f)
+        print(f'Random Test {i}',file=f)
+        rand_OTLs = random.sample(LOIF.index.to_list(), len(MCP[0]),)
+        print(f'Random OTLs ({len(rand_OTLs)}): {rand_OTLs}',file=f)
+        print(f'Outage Set, Same as MCP results ({len(MCP[1])}): {MCP[1]}',file=f)
+        # rand_outages = random.sample(LOIF.index.to_list(),len(MCP[1]))
+        ML_labels = []
+        for j in rand_OTLs:
+            ML_labels.append(f'PF Line {j}')  
+            ML_labels.append(f'QF Line {j}')
+            ML_labels.append(f'PT Line {j}')
+            ML_labels.append(f'QT Line {j}')
+        ML_labels.append(f'Label')
+        OL_labels = [0] + MCP[1]
+        Report = knn_model(k=8,ML_labels=ML_labels,OL_labels=OL_labels,output=False)
+        print(f'Overall F1-Score (Test {i}): {Report['macro avg']['f1-score']}',file=f)
+        scores.append(Report['macro avg']['f1-score'])
+    print('\n',file=f)
+    avg_score = sum(scores)/len(scores)
+
+    print(f'Average F1-Score ({i} Tests): {avg_score}',file=f)
+    print('-------------------END of RANDOM OTL SELECTION---------------------------',file=f)
+
+def high_eta(mgb_df,MCP):
+    print('------------------HIGH ETA Test-----------------------------------------',file=f)
+    # print(mgb_df)
+    # print(MCP)
+    Eta_OTLs = []
+    for i in mgb_df.index[:len(MCP[0])]:
+        Eta_OTLs.append(i)
+    print(f'High Eta Lines ({len(Eta_OTLs)}): {Eta_OTLs}',file=f)
+    print(f'Outage Set, Same as MCP results ({len(MCP[1])}): {MCP[1]}',file=f)
+    ML_labels = []
+    for j in Eta_OTLs:
+        ML_labels.append(f'PF Line {j}')  
+        ML_labels.append(f'QF Line {j}')
+        ML_labels.append(f'PT Line {j}')
+        ML_labels.append(f'QT Line {j}')
+    ML_labels.append(f'Label')
+
+    OL_labels = [0] + MCP[1]
+    Report = knn_model(k=8,ML_labels=ML_labels,OL_labels=OL_labels,output=True)
+    print('-----------------End of HIGH ETA Test---------------------------------',file=f)
+
+
 def main(k,desired_precision,desired_f1):
-    print('================  k-neighbors={0}, Desired Precision(For Normal Conditions)={1}, Desired F1-Score (Overall Performance)={2} ================'.format(k,desired_precision,desired_f1))
+    Results = {}
+    print('================  k-neighbors={0}, Desired Precision(For Normal Conditions)={1}, Desired F1-Score (Overall Performance)={2} ================'.format(k,desired_precision,desired_f1),file=f)
     #Checks if minimum gamma results already exist, if not it calculates them first
     os.chdir(folder_path)                     #Update path to new folder (Min Gamma Results)
-    if os.path.exists(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}.csv'):     #If results for a certain precision and F1-score exist read the CSV file contaiing the reults
-        mgb_df = pd.read_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}.csv',index_col=0)  #Read CSV file
+    if os.path.exists(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}_{DC_or_AC}.csv'):     #If results for a certain precision and F1-score exist read the CSV file contaiing the reults
+        mgb_df = pd.read_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}_{DC_or_AC}.csv',index_col=0)  #Read CSV file
     else:
         os.chdir(current_path)                     #Update path to new folder (Min Gamma Results)                                                                                     #IF no results exists, begin calculating minimum gamma and save results to a CSV file.
         mgb_df = calc_min_gamma_beta(k=8,desired_f1score=desired_precision,desired_precision=desired_f1)
         os.chdir(folder_path)                     #Update path to new folder (Min Gamma Results)
-        mgb_df.to_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}.csv')
-        mgb_df = pd.read_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}.csv',index_col=0)  #Read CSV file
+        mgb_df.to_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}_{DC_or_AC}.csv')
+        mgb_df = pd.read_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}_{DC_or_AC}.csv',index_col=0)  #Read CSV file
         
-    
-    MCP = max_coverage_greedy(mgb_df=mgb_df.sort_values(by='Total_outages',ascending=False),OTL_num=200)
-    return MCP
+    print(f'Final Sa Subsets:\n {mgb_df}',file=f)
+    print('\n',file=f)
+    Results['MCP'] = max_coverage_greedy(mgb_df=mgb_df.sort_values(by='Total_outages',ascending=False),OTL_num=1000)
+    print('\n',file=f)
+    Results['Eta'] = high_eta(mgb_df=mgb_df.sort_values(by='Total_outages',ascending=False),MCP= Results['MCP'])
+    print('\n',file=f)
+    Results['Random'] = random_OTL(MCP=Results['MCP'])
+    return Results
+
+
+start_time = time.perf_counter()
+###USER INPUTS#######
+#Read Bracnh Data CSV collected from MATLAB using MATPOWER
+root = tk.Tk()
+root.withdraw() 
+case = ''
+def select_files(t):
+    if t == 1:
+        title = "SELECT CONVERGENCE FILE OF THE SYSTEM YOU ARE INTERESTED IN"
+    elif t == 2:
+        title = "SELECT BRANCH DATA FILE OF THE SYSTEM YOU ARE INTERESTED IN (MAKE SURE IT IS THE SAME SYSTEM YOU INITIALLY CHOSE)"
+    elif t == 3:
+        title = 'SELECT LOIF/LODF MATRIX FILE OF THE SYSTEM YOU ARE INTERESTED IN (MAKE SURE IT IS THE SAME SYSTEM YOU INITIALLY CHOSE)'
+    fpath = filedialog.askopenfilename(
+        title=title,
+        initialdir="/", # Optional: sets the initial directory
+        filetypes=(
+            ("CSV files", "*.csv"),
+            ("All files", "*.*")
+        )
+    )
+    print(fpath)
+    return fpath
+
+
+
+#Select Which Files to Use
+fpath1 = select_files(1)
+Convergence_Data = pd.read_csv(fpath1,index_col=0,header=None)
+fpath2 = select_files(3)
+LOIF = pd.read_csv(fpath2)  #Excluded lines are not removed in matlab
+if 'LODF' in fpath2:
+    case = re.search(r"LODFmatrix_(case.+)\.csv", fpath2).group(1)
+    matrix = 'LODF'
+elif 'LOIF' in fpath2:
+    case = re.search(r"LOIFmatrix_(case.+)\.csv", fpath2).group(1)
+    matrix = 'LOIF'
+
+fpath3 = select_files(2)
+Training_all = pd.read_csv(fpath3)
+Training_all.index = Training_all['Label']
+
+
+DC_or_AC = fpath3[fpath3.index('.csv')-2:fpath3.index('.csv')]
+data_label = re.search(rf"Branchdata_{case}_(.+?)_{DC_or_AC}\.csv",fpath3).group(1)
+
+f = open(f"output_{case}_{data_label}_{DC_or_AC}_{matrix}.txt", "a")
+print(case,file=f)
+print(f'DC or AC: {DC_or_AC}',file=f)
+print(data_label,file=f)
+
+
+#Script Calculates How Many Transmission Lines There are
+num_lines = len(LOIF.index.to_list())
+print(f'Total Number of Transmission Lines: ',num_lines,file=f)
+#Because We Ignore outages that don't converge when disconnected, we want to see all outages that we collected data on (possible outages)
+#Script Tells us how many lines converged, which are the lines we will focus on.
+outage_set = Convergence_Data.loc[Convergence_Data[1] ==1].index.to_list()
+outage_set = outage_set[1:]
+#Script Tells us how many lines did not converge, which are the lines we will ignore
+excluded_set = Convergence_Data.loc[Convergence_Data[1] ==0].index.to_list()
+print(f'Possible Line Outages ({len(outage_set)}):\n',outage_set,file=f)
+print(f'Excluded Transmission Lines ({len(excluded_set)}):\n',excluded_set,file=f)
+
+
+#Add row labels to LOIF matrix
+line_numbers = [i for i in range(1,num_lines+1)]
+LOIF.index = line_numbers
+LOIF.columns = line_numbers
+LOIF = LOIF.drop(index=excluded_set,columns=excluded_set)  #Remove Rows and Columns related to excluded lines
+
+
+current_path = os.getcwd()   #Get the address of current path
+folder_path = f'{current_path}/Final_Sa_{case}_{data_label}_{DC_or_AC}_{matrix}' #Create Path for New Folder to store (Min Gamma Results)
+os.makedirs(folder_path, exist_ok=True)   #If the Folder already exist do nothing, if not then create new folder
+
+
+Ta_sets = {}
+for i in LOIF.index:   ## i is each OTL (rows in LOIF matrix)
+    A = LOIF.loc[i,:]   #A becomes a pandas series where each element corresponds to an outage in the system
+    Ta_sets[i] = A     #This is the initialization stage where we begin with all outages possible outages for each observation point.
+    # print(Ta_sets[i])
+
+Ta_sets = pd.DataFrame(Ta_sets)
+
+
 DPs = []
 DF1s = []
 OTL_sets = []
@@ -335,11 +411,12 @@ OTL_lengths = []
 collection_sets = []
 collection_lenghts = []
 f1scores_2 = []
-for i in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]:
-    for j in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]:
+for i in [1.0]:
+    for j in [1.0]:
         DF1s.append(i)
         DPs.append(j)
-        MCP = main(k=8,desired_f1=i,desired_precision=j)
+        Resuls = main(k=8,desired_f1=i,desired_precision=j)
+        MCP = Resuls['MCP']
         OTL_sets.append(MCP[0])
         OTL_lengths.append(len(MCP[0]))
         collection_sets.append(MCP[1])
@@ -347,15 +424,21 @@ for i in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]:
         f1scores_2.append(MCP[2])
 
 DF = pd.DataFrame({'Desired Precision':DPs,'Desired F1-Score':DF1s,'Total OTLs':OTL_lengths,'Total Outages Covered':collection_lenghts,'Actual F1Score':f1scores_2,'OTL Sets':OTL_sets,'Covered Sets':collection_sets})
-print(DF)
-DF.to_csv(f'MCP_Results_{case}.csv')
+# print(DF)
+DF.to_csv(f'MCP_Results_{case}_{DC_or_AC}.csv')
 
 
-print('===================Code Executed============================')
+print('===================Code Executed============================',file=f)
 end_time = time.perf_counter()
 elapsed_time = end_time - start_time
-print(f"Code executed in {elapsed_time:0.4f} Seconds")
+print(f"Code executed in {elapsed_time:0.4f} Seconds",file=f)
 elapsed_time = elapsed_time/60
-print(f"Code executed in {elapsed_time:0.4f} Minutes")
+print(f"Code executed in {elapsed_time:0.4f} Minutes",file=f)
 elapsed_time = elapsed_time/60
-print(f"Code executed in {elapsed_time:0.4f} Hours")
+print(f"Code executed in {elapsed_time:0.4f} Hours",file=f)
+
+
+print(fpath1,file=f)
+print(fpath2,file=f)
+print(fpath3,file=f)
+f.close()

@@ -1,3 +1,27 @@
+% function matpower_simulations5_octve(mpc_string,ML,hourly_load_variation,percent_load_var,samples_per_scenario,dataset_label,rng_seed,DC_or_AC)
+% mpc_string: Name of the case file in matpower that we are interested in (Ex. 'case118' -> 118 bus system)
+% ML: This is the monitored line(s) which can be a single integer, an array of integers, or the sentinel value '[]' (all lines).
+% hourly_load_variation: Hourly Load Variation will be used later when we try to implement a daily load profile.
+% percent_load_var: Percentage that represents load variation (random number from -% to +%).
+% samples_per_scenario: Number of Samples For Each Scenario (Outages and Normal Conditions)
+% dataset_label: Used to identify file name of Training Data
+% rng_seed: The seed of Random Number Generator (used for random load variation).
+% If we set rng_seed to 0, seed is Generated using POSIX time (number of seconds since 1970)
+% If we want to replicate exact load variation, we enter the RNG seed of previous training data.
+% DC_or_AC: This is to determine if the user wants to collect results by running AC or DC solutions.
+% 
+% What is Happening?
+% We Collect Labeled Training Data For The Following Scenarios
+    % All single-line outages
+    % System Under Normal Conditions
+% We Collect Training Data for all scenarios when
+    % The system has no load variation (base load)
+    % When the system has a random load variation
+    % Repeated Based on the number of samples
+% 
+% When disconnecting lines, generation is fixed based on the Optimal Power Flow (OPF) solution of the system under normal conditions.
+% When simulating a line outage, we use regular Power Flow (PF) Solution.
+
 function matpower_simulations5_octve_fast(mpc_string,ML,hourly_load_variation,percent_load_var,samples_per_scenario,dataset_label,rng_seed,DC_or_AC)
 % Faster version of matpower_simulations5_octve()
 

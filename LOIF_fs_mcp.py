@@ -22,11 +22,12 @@
 #
 #        -RETURNS: path of selected file
 #
-#  -knn_model(ML_labels,OL_labels,k): 
+#  -knn_model(ML_labels,OL_labels,k,output): 
 #   This Function Filters Training Data Depending on the Observe Transmission Lines Selected and the Outages we want to test.
 #       -ML_labels : Set of Observed Transmission Lines (OTL) to get power flow data from.
 #       -OL_labels : Set of Outages We Want to Test with the following power flow data of OTLs
 #       -k : The Number of K-Neighbors in KNN Classifier
+#       -output: True/False. IF True, the knn model will print the classification report.
 #
 #       -RETURNS: Classification Report of KNN Classifier (In Dictionary Form)
 #
@@ -46,6 +47,18 @@
 #       -OTL_num: The number of OTLs we want to get max coverage with.
 #           > Right Now this is set to a Very Large Number In Order find the maximum number of OTLs needed for max coverage
 #
+#       -RETURNS: Returns results from MCP algorithms --> [OTLs,collection_set,Report['macro avg']['f1-score']]
+#
+#   -random_OTL(MCP):
+#     This function will run a series of test where the set of OTLs is randomly selected. The size of these random sets are determined by the number of OTLs the MCP algorithm obtained and are tested using the covered set of outages obtained from MCP algorithm.
+#     After running multiple tests, the script will use the Macro F1-Scores (Overall Performance) from each test to get an average Macro F1-score.
+#        -MCP: This is the Results of the MCP algorithms. It is needed here to determine the number of random OTLs to select.   
+#  -high_eta(mgb_df,MCP):
+#    This function gets the results of the final Sa Subsets and the Results of the MCP Greedy Algorithm. From the Sa Subsets it organizes the results in descending order based off the size of each subset. With the MCP results it determines how many OTLs
+#    should be collected based on high eata. Then it wil test the set of covered outages from MCP results using KNN.
+#       -mgb_df: This is the dataframe crated from calc_mi_gamma_beta().
+#       -MCP: This is the Results of the MCP algorithm. It is needed here to determine the number of High Eta Lines Needed for OTL set. And will test the set witht he same set of covered outages from MCP.
+#
 #  -main(k,desired_precision,desired_f1):
 #   This is the function that brings everything together and is the only function that needs to be called. This function also creates a directory to save newly created Dataframes.
 #   If this function was already ran once, and dataframes already exist. This script will only run max_coverage_greedy().
@@ -60,7 +73,9 @@
 #    -Finding minimum beta for each Sa subset
 #          *User specifies a desired F1-Score (Overal Performance) in order to find beta
 #          *F1-score tells us how well the KNN model should perform when testing each Sa subset
-# After finding the minimum gamma and beta values for each Sa subset, this script will run a Greedy Maximum Coverage Problem in order to find the maximum coverage with a set of OTLs
+#    -After finding the minimum gamma and beta values for each Sa subset, this script will run a Greedy Maximum Coverage Problem in order to find the maximum coverage with a set of OTLs.
+#   -With the results obtained, it will run a test using High Eta selection.
+
 
 import pandas as pd
 from sklearn.metrics import classification_report  #, f1_score,recall_score, precision_score
@@ -254,7 +269,7 @@ def random_OTL(MCP):
         rand_OTLs = random.sample(LOIF.index.to_list(), len(MCP[0]),)
         print(f'Random OTLs ({len(rand_OTLs)}): {rand_OTLs}',file=f)
         print(f'Outage Set, Same as MCP results ({len(MCP[1])}): {MCP[1]}',file=f)
-        # rand_outages = random.sample(LOIF.index.to_list(),len(MCP[1]))
+
         ML_labels = []
         for j in rand_OTLs:
             ML_labels.append(f'PF Line {j}')  
@@ -303,7 +318,7 @@ def main(k,desired_precision,desired_f1):
         mgb_df = pd.read_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}_{DC_or_AC}.csv',index_col=0)  #Read CSV file
     else:
         os.chdir(current_path)                     #Update path to new folder (Min Gamma Results)                                                                                     #IF no results exists, begin calculating minimum gamma and save results to a CSV file.
-        mgb_df = calc_min_gamma_beta(k=8,desired_f1score=desired_precision,desired_precision=desired_f1)
+        mgb_df = calc_min_gamma_beta(k=8,desired_f1score=desired_f1,desired_precision=desired_precision)
         os.chdir(folder_path)                     #Update path to new folder (Min Gamma Results)
         mgb_df.to_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}_{DC_or_AC}.csv')
         mgb_df = pd.read_csv(f'Minimum_gb_k{k}_dp{desired_precision}_df{desired_f1}_{DC_or_AC}.csv',index_col=0)  #Read CSV file

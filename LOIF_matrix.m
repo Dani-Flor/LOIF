@@ -1,7 +1,7 @@
 %Run LOIF_matrix(case file name) --> Ex. LOIF_matrix('case118')
 
-function LOIF_matrix(mpc_string)
-mpc = loadcase(mpc_string); %
+function LOIF_matrix(system)
+mpc = loadcase(system); %
 mpc = ext2int(mpc);
 define_constants
 % slack = 7049;
@@ -47,10 +47,10 @@ table = array2table(LOIF_change);
 table.Properties.RowNames = all_rows;
 table.Properties.VariableNames = all_columns;
 
-writetable(table,sprintf('LOIFmatrix_%s.csv',mpc_string))
+writetable(table,sprintf('LOIFmatrix_%s.csv',system))
 
 table = array2table(LODF);
 table.Properties.RowNames = all_rows;
 table.Properties.VariableNames = all_columns;
-writetable(table, sprintf('LODFmatrix_%s.csv', mpc_string));
+writetable(table, sprintf('LODFmatrix_%s.csv', system));
 end

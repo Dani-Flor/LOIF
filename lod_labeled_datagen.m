@@ -22,7 +22,29 @@
 % When disconnecting lines, generation is fixed based on the Optimal Power Flow (OPF) solution of the system under normal conditions.
 % When simulating a line outage, we use regular Power Flow (PF) Solution.
 
-function lod_labeled_datagen(system,otl,hourly_var,rand_var,samples,label,rng_seed,sol_type)
+function lod_labeled_datagen(label,system,samples,hourly_var,rand_var,rng_seed,sol_type,otl)
+
+if nargin == 7
+    otl = [];
+elseif nargin == 6
+    otl = [];
+    sol_type = "AC";
+elseif nargin == 5
+    otl = [];
+    sol_type = "AC";
+    rng_seed = 0;
+elseif nargin == 4
+    otl = [];
+    sol_type = "AC";
+    rng_seed = 0;
+    rand_var = 5;
+elseif nargin == 3
+    otl = [];
+    sol_type = "AC";
+    rng_seed = 0;
+    rand_var = 5;
+    hourly_var = 1.0;
+end
 %% Calculate LOIF and LODF Matrices
 LOIF_matrix(system)
 %% Initalialization
@@ -75,14 +97,15 @@ convergence_data(:,1) = 0:num_lines;
 previous_results = ones(num_rows,1);         %Convergence Results of All outages and normal condition of prev. sample
 
 %Orignal PD/QD
-PD_copy = mpc_copy.bus(:, PD);
-QD_copy = mpc_copy.bus(:, QD);
+PD_copy = mpc_copy.bus(:, PD);  %Copy of Active Loads
+QD_copy = mpc_copy.bus(:, QD); %Copy of Reactive Loads
 
 for i = 0:samples
     
     col = i + 1;
-    % Random load variation for this sample
-    if i == 0
+
+    % Random load variation for current sample
+    if i == 0   %If i = 0, collect data with base load (no variation)
         Load_Variation = 0;
     else
         percent_var = rand_var * 0.01;
@@ -91,19 +114,18 @@ for i = 0:samples
         Load_Variation = (b-a) * rand() + a;  %This gives a random load variation between -percent: +percent
     end
 
-    v = hourly_var * (1 + Load_Variation);
-    %update load with variation
-    PDs   = PD_copy * v;
-    QDs   = QD_copy * v;
+    v = hourly_var * (1 + Load_Variation); %Find total variation
+    PDs   = PD_copy * v; %update Active load with variation
+    QDs   = QD_copy * v; %update Reactive load with variation
     mpc_updated = mpc_copy;  %Copy original system (No changes)
     mpc_updated.bus(:, PD) = PDs;    %Update Active Demand with Load Variation
     mpc_updated.bus(:, QD) = QDs;    %Update Reactive Demand with Load Variation
 
     % Convergence results for current sample
     current_results = zeros(num_rows,1);
-    %% For Normal Conditions
+    %% For Normal Conditions Run OPF solution and collect Active/Reactive Power at all lines and collect generator data
     if previous_results(1) == 1  %If previous sample converged for normal conditions
-        mpc_norm = mpc_updated;
+        mpc_norm = mpc_updated;  %Load system with load variation
 
         if strcmp(sol_type,'AC')
             results0 = runopf(mpc_norm, mpopt);  %AC OPF
@@ -113,16 +135,15 @@ for i = 0:samples
 
         if results0.success == 1
             gen_dat = results0.gen;  %Collect Gen Data(Normal conditions) to fix generation for outage conditions
-            current_results(1) = 1;
+            current_results(1) = 1;  %Save Convergence Result
 
-            % Collect features
-            f = results0.branch(otl, [PF QF PT QT]); 
-            Dfeat = reshape(f.', 1, []);
+            f = results0.branch(otl, [PF QF PT QT]); %Collect Active/Reactive Power for OTLs
+            Dfeat = reshape(f.', 1, []); %vector to array
      
             row = row + 1;
-            labeled_dataset(row,:) = [Dfeat, 0];
+            labeled_dataset(row,:) = [Dfeat, 0]; % Save Features and Label to labeled dataset
         else
-            % If x=0 fails, mark and skip all outages for this sample
+            %If normal condition failed previously
             previous_results(1) = 0;
             current_results(1) = 0;
             % no gen_dat available -> skip remaining x
@@ -136,41 +157,50 @@ for i = 0:samples
         continue;
     end
 
-    %% For All Possible Outages
+    %% For Each Outage Scenario run PF solution with Fixed Generation (From OPF solution), collect power flows for each otl
     for x = 1:num_lines
+
+        %Check if previous sample converged or not.
         if previous_results(x+1) == 0
             % previously failed => skip forever
             current_results(x+1) = 0;
             continue;
         end
-
-        mpc_out = mpc_updated;
-        mpc_out.branch(x, BR_STATUS) = 0;     % disconnect line x
+        
+        %% Load case, fix generation then disconnect line. After that run PF solution
+        mpc_out = mpc_updated;               % load system with load variation
         mpc_out.gen = gen_dat;               % fixed generation from normal OPF
+        mpc_out.branch(x, BR_STATUS) = 0;    % disconnect line x
 
+        %Check if solution type is AC or DC. Then run powerflow (PF) solution
         if strcmp(sol_type,'AC')
             results = runpf(mpc_out, mpopt);  %AC power flow solution
         else
             results = rundcpf(mpc_out, mpopt);  %DC power flow solution
         end
 
-        if results.success ~= 1
-            % mark as failed
-            previous_results(x+1) = 0;
-            current_results(x+1) = 0;
+        %% Check convergence for current outage, if failed skip power flow collection.
+        % If succeeded, collect powerflows at OTLs and create Label for
+        % outage
+
+        %Check if outage converged/not converge for current sample 
+        if results.success ~= 1 %check if failed
+            previous_results(x+1) = 0; %update convergence results
+            current_results(x+1) = 0; %update convergence results
             continue;  %skip feature collection
         end
 
-        current_results(x+1) = 1;
+        current_results(x+1) = 1; %update if solution converged
 
-        % Collect features
-        f = results.branch(otl, [PF QF PT QT]);
-        Dfeat = reshape(f.', 1, []);
+
+        f = results.branch(otl, [PF QF PT QT]); %Collect Active/Reactive Power for OTLs
+        Dfeat = reshape(f.', 1, []); %vector to array
+
         row = row + 1;
-        labeled_dataset(row,:) = [Dfeat, x];
+        labeled_dataset(row,:) = [Dfeat, x]; % Save Features and Label to labeled dataset
     end
 
-    % store convergence column for this sample
+    % store current sample's convergence results in convergence dataset.
     convergence_data(:, col+1) = current_results;
 
     if mod(col,5) == 0   %Print progress every 5 samples using modulo
@@ -181,6 +211,7 @@ end
 % Trim to the number of rows actually collected
 labeled_dataset = labeled_dataset(1:row,:);
 
+%% Create Column Labels for Labeled Dataset (4 per OTL and 1 for Labels)
 Column_Labels = "";
 for j = otl
     Column_Labels = strcat(Column_Labels,sprintf('PF Line %d, ',j));
@@ -190,30 +221,32 @@ for j = otl
 end
 Column_Labels = strcat(Column_Labels,sprintf('Label'));
 
-convFile = sprintf('Convergence_Data_%s_%s_%s.csv', system, label, sol_type);
-dataFile = sprintf('Branchdata_%s_%s_%s.csv',      system, label, sol_type);
+%% Create CSV files for Labeled Dataset, Convergence Results, and User Parameters
+convFile = sprintf('Convergence_Data_%s_%s_%s.csv', system, label, sol_type);  %Name of file for Convergence Results
+dataFile = sprintf('Branchdata_%s_%s_%s.csv',      system, label, sol_type);   %Name of file for labeled dataset
 
-% Convergence Data CSV
-writematrix(convergence_data, convFile);
+%convergence Restuls CSV
+writematrix(convergence_data, convFile); %Save Convergence Results to CSV file.
 
 % Branch Data CSV
-fid = fopen(dataFile, 'w');
-if fid == -1, error('Cannot open file %s', dataFile); end
-fprintf(fid, '%s', Column_Labels);
-fclose(fid);
-writematrix(labeled_dataset, dataFile, 'WriteMode', 'append');
+fid = fopen(dataFile, 'w'); %open labeled dataset CSV file
+if fid == -1, error('Cannot open file %s', dataFile); end  %ERROR, could not open
+fprintf(fid, '%s', Column_Labels);  %Save Column Labels first
+fclose(fid); 
+writematrix(labeled_dataset, dataFile, 'WriteMode', 'append'); %Save Labeled data to CSV file
 
 
-%% Save RNG Seed and Other User Paramters
-duration = toc;
+%% Save RNG Seeds and Other User Paramters
+duration = toc;  %Collect Computation Time
 fprintf('Total Time: %.2f seconds\n', duration);
 
-rng_seeds = table(system,string(label), seed, samples, rand_var, string(sol_type), duration, ...
+rng_seeds = table(system,label, seed, samples, rand_var, sol_type, duration, ...
     'VariableNames', {'case','data_label','rng_seed','samples_per_scenario','percent_load_var(%)','DC or AC','Total Time'});
 
-if exist('RNG_Seeds.csv','file')
-    writetable(rng_seeds, 'RNG_Seeds.csv', 'WriteMode', 'append');
+%Append user parameters if CSV file exist, if not create new CSV file and save user parameters 
+if exist('User_parameters.csv','file')
+    writetable(rng_seeds, 'User_parameters.csv', 'WriteMode', 'append');
 else
-    writetable(rng_seeds, 'RNG_Seeds.csv');
+    writetable(rng_seeds, 'User_parameters.csv');
 end
 end

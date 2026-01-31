@@ -36,21 +36,33 @@ for i=1:size(mpc.branch,1) %for every row
     end
 end
 
-all_rows = [];
-all_columns = [];
+column_labels = "";
 for j=1:size(mpc.branch,1)
-    all_columns = cat(2,all_columns,string(sprintf('outage%d',j)));
-    all_rows = cat(2,all_rows,string(sprintf('line%d',j)));
+column_labels = strcat(column_labels,sprintf('outage%d, ',j));
 end
 
-table = array2table(LOIF_change);
-table.Properties.RowNames = all_rows;
-table.Properties.VariableNames = all_columns;
+lodf_file = sprintf('LODFmatrix_%s.csv',system);
+loif_file = sprintf('LOIFmatrix_%s.csv',system);
 
-writetable(table,sprintf('LOIFmatrix_%s.csv',system))
+fid = fopen(lodf_file, 'w'); %open labeled dataset CSV file
+if fid == -1, error('Cannot open file %s', dataFile); end  %ERROR, could not open
+fprintf(fid, '%s', column_labels);  %Save Column Labels first
+fclose(fid);
+writematrix(LODF, lodf_file, 'WriteMode', 'append');
 
-table = array2table(LODF);
-table.Properties.RowNames = all_rows;
-table.Properties.VariableNames = all_columns;
-writetable(table, sprintf('LODFmatrix_%s.csv', system));
+fid = fopen(loif_file, 'w'); %open labeled dataset CSV file
+if fid == -1, error('Cannot open file %s', dataFile); end  %ERROR, could not open
+fprintf(fid, '%s', column_labels);  %Save Column Labels first
+fclose(fid);
+writematrix(LOIF_change, loif_file, 'WriteMode', 'append');
+% table = array2table(LOIF_change);
+% table.Properties.RowNames = all_rows;
+% table.Properties.VariableNames = column_labels;
+% 
+% writetable(table,sprintf('LOIFmatrix_%s.csv',system))
+% 
+% table = array2table(LODF);
+% table.Properties.RowNames = all_rows;
+% table.Properties.VariableNames = column_labels;
+% writetable(table, sprintf('LODFmatrix_%s.csv', system));
 end

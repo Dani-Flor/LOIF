@@ -35,34 +35,39 @@ for i=1:size(mpc.branch,1) %for every row
           
     end
 end
-
+row_labels = "";
 column_labels = "";
 for j=1:size(mpc.branch,1)
-column_labels = strcat(column_labels,sprintf('outage%d, ',j));
+    row_labels = strcat(row_labels,sprintf('line%d',j));
+    column_labels = strcat(column_labels,sprintf('outage%d,',j));
 end
 
 lodf_file = sprintf('LODFmatrix_%s.csv',system);
+csvwrite(lodf_file, LODF);
+% Read the contents of the specified file
+S = fileread(lodf_file);
+% Open the file for writing, and check for successful opening
+FID = fopen(lodf_file, 'w');
+if FID == -1, error('Cannot open file %s', lodf_file); end
+% Write column labels to the file
+fprintf(FID, "%s\n", column_labels);
+% Write the contents read from the file back to it
+fprintf(FID, "%s", S);
+% Close the file
+fclose(FID);
+
+
 loif_file = sprintf('LOIFmatrix_%s.csv',system);
-
-fid = fopen(lodf_file, 'w'); %open labeled dataset CSV file
-if fid == -1, error('Cannot open file %s', dataFile); end  %ERROR, could not open
-fprintf(fid, '%s', column_labels);  %Save Column Labels first
-fclose(fid);
-writematrix(LODF, lodf_file, 'WriteMode', 'append');
-
-fid = fopen(loif_file, 'w'); %open labeled dataset CSV file
-if fid == -1, error('Cannot open file %s', dataFile); end  %ERROR, could not open
-fprintf(fid, '%s', column_labels);  %Save Column Labels first
-fclose(fid);
-writematrix(LOIF_change, loif_file, 'WriteMode', 'append');
-% table = array2table(LOIF_change);
-% table.Properties.RowNames = all_rows;
-% table.Properties.VariableNames = column_labels;
-% 
-% writetable(table,sprintf('LOIFmatrix_%s.csv',system))
-% 
-% table = array2table(LODF);
-% table.Properties.RowNames = all_rows;
-% table.Properties.VariableNames = column_labels;
-% writetable(table, sprintf('LODFmatrix_%s.csv', system));
+csvwrite(loif_file, LOIF_change);
+% Read the contents of the specified file
+S = fileread(loif_file);
+% Open the file for writing, and check for successful opening
+FID = fopen(loif_file, 'w');
+if FID == -1, error('Cannot open file %s', loif_file); end
+% Write column labels to the file
+fprintf(FID, "%s\n", column_labels);
+% Write the contents read from the file back to it
+fprintf(FID, "%s", S);
+% Close the file
+fclose(FID);
 end

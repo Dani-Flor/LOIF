@@ -1,3 +1,4 @@
+
 import pandas as pd
 from sklearn.metrics import classification_report  #, f1_score,recall_score, precision_score
 from sklearn.neighbors import KNeighborsClassifier
@@ -253,7 +254,7 @@ def main(k,desired_precision,desired_f1):
     fpath1 = select_files(1)
     Convergence_Data = pd.read_csv(fpath1,index_col=0,header=None)
     fpath2 = select_files(3)
-    LOIF = pd.read_csv(fpath2)  #Excluded lines are not removed in matlab
+    LOIF = pd.read_csv(fpath2,index_col=-1)  #Excluded lines are not removed in matlab
     if 'LODF' in fpath2:
         case = re.search(r"LODFmatrix_(case.+)\.csv", fpath2).group(1)
         matrix = 'LODF'
@@ -297,7 +298,6 @@ def main(k,desired_precision,desired_f1):
     LOIF.index = line_numbers
     LOIF.columns = line_numbers
     LOIF = LOIF.drop(index=excluded_set,columns=excluded_set)  #Remove Rows and Columns related to excluded lines
-
 
     Ta_sets = {}
     for i in LOIF.index:   ## i is each OTL (rows in LOIF matrix)

@@ -212,41 +212,63 @@ end
 labeled_dataset = labeled_dataset(1:row,:);
 
 %% Create Column Labels for Labeled Dataset (4 per OTL and 1 for Labels)
-Column_Labels = "";
+column_labels = "";
 for j = otl
-    Column_Labels = strcat(Column_Labels,sprintf('PF Line %d, ',j));
-    Column_Labels = strcat(Column_Labels,sprintf('QF Line %d, ',j));
-    Column_Labels = strcat(Column_Labels,sprintf('PT Line %d, ',j));
-    Column_Labels = strcat(Column_Labels,sprintf('QT Line %d, ',j));
+    column_labels = strcat(column_labels,sprintf('PF Line %d, ',j));
+    column_labels = strcat(column_labels,sprintf('QF Line %d, ',j));
+    column_labels = strcat(column_labels,sprintf('PT Line %d, ',j));
+    column_labels = strcat(column_labels,sprintf('QT Line %d, ',j));
 end
-Column_Labels = strcat(Column_Labels,sprintf('Label'));
+column_labels = strcat(column_labels,sprintf('Label'));
 
 %% Create CSV files for Labeled Dataset, Convergence Results, and User Parameters
 convFile = sprintf('Convergence_Data_%s_%s_%s.csv', system, label, sol_type);  %Name of file for Convergence Results
 dataFile = sprintf('Branchdata_%s_%s_%s.csv',      system, label, sol_type);   %Name of file for labeled dataset
 
 %convergence Restuls CSV
-writematrix(convergence_data, convFile); %Save Convergence Results to CSV file.
+csvwrite(convFile, convergence_data);
+% writematrix(convergence_data, convFile); %Save Convergence Results to CSV file.
 
 % Branch Data CSV
-fid = fopen(dataFile, 'w'); %open labeled dataset CSV file
-if fid == -1, error('Cannot open file %s', dataFile); end  %ERROR, could not open
-fprintf(fid, '%s', Column_Labels);  %Save Column Labels first
-fclose(fid); 
-writematrix(labeled_dataset, dataFile, 'WriteMode', 'append'); %Save Labeled data to CSV file
+csvwrite(dataFile,labeled_dataset)
+S = fileread(dataFile);
+FID = fopen(dataFile, 'w');
+if FID == -1, error('Cannot open file %s', dataFile); end
+% Write column labels to the file
+fprintf(FID, "%s\n", column_labels);
+% Write the contents read from the file back to it
+fprintf(FID, "%s", S);
+% Close the file
+fclose(FID);
 
 
 %% Save RNG Seeds and Other User Paramters
 duration = toc;  %Collect Computation Time
 fprintf('Total Time: %.2f seconds\n', duration);
 
-rng_seeds = table(system,label, seed, samples, rand_var, sol_type, duration, ...
-    'VariableNames', {'case','data_label','rng_seed','samples_per_scenario','percent_load_var(%)','DC or AC','Total Time'});
+% rng_seeds = table(system,label, seed, samples, rand_var, sol_type, duration, ...
+    % 'VariableNames', {'case','data_label','rng_seed','samples_per_scenario','percent_load_var(%)','DC or AC','Total Time'});
 
+param_file = sprintf('User_parameters.csv');
+% params = [label,system,samples,hourly_var,rand_var,rng_seed,sol_type];
+column_labels = "label,system,samples,hourly_var,rand_var,rng_seed,sol_type";
 %Append user parameters if CSV file exist, if not create new CSV file and save user parameters 
-if exist('User_parameters.csv','file')
-    writetable(rng_seeds, 'User_parameters.csv', 'WriteMode', 'append');
+if exist(param_file,'file')
+    FID = fopen(param_file,'a');
+    if FID==-1, error('Cannot open file %s', param_file); end
+    % build a format string matching types: %s for text, %g or %.2f for numbers
+    fmt = '%s,%s,%d,%.6g,%.6g,%d,%s\n';
+    % ensure label and system are char (use char(...) or string(...))
+    fprintf(FID, fmt, char(label), char(system), samples, hourly_var, rand_var, rng_seed, char(sol_type));
+    fclose(FID);
 else
-    writetable(rng_seeds, 'User_parameters.csv');
+    FID = fopen(param_file,'w');
+    if FID==-1, error('Cannot open file %s', param_file); end
+    fprintf(FID, '%s\n', column_labels);
+    % build a format string matching types: %s for text, %g or %.2f for numbers
+    fmt = '%s,%s,%d,%.6g,%.6g,%d,%s\n';
+    % ensure label and system are char (use char(...) or string(...))
+    fprintf(FID, fmt, char(label), char(system), samples, hourly_var, rand_var, rng_seed, char(sol_type));
+    fclose(FID);
 end
 end

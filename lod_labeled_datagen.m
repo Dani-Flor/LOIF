@@ -75,14 +75,11 @@ end
 %If rng_seed = 0, Generate seed using posixtime
 if rng_seed == 0
     %calculate POSIX Time manually
-    seed = (now - 719529) * 86400;  %now function is compatible with both
+    rng_seed = (now - 719529) * 86400;  %now function is compatible with both
     %MATLAB and Octave: (serial number of current date - the serial number
     %                                    Jan 1,1970) * number of seconds in a day
-else
-    %Else, use seed provided by user
-    seed = rng_seed;
 end
-rng(seed);
+rng(rng_seed);
 
 %% Initialize Variables
 num_samples = samples;
@@ -258,8 +255,7 @@ column_labels = "label,system,samples,hourly_var,rand_var,rng_seed,sol_type";
 if exist(param_file,'file')
     FID = fopen(param_file,'a');
     if FID==-1, error('Cannot open file %s', param_file); end
-    % build a format string matching types: %s for text, %g or %.2f for numbers
-    fmt = '%s,%s,%d,%.6g,%.6g,%d,%s\n';
+    fmt = '%s,%s,%d,%.6f,%.6f,%.6f,%s\n';
     % ensure label and system are char (use char(...) or string(...))
     fprintf(FID, fmt, char(label), char(system), samples, hourly_var, rand_var, rng_seed, char(sol_type));
     fclose(FID);
@@ -267,8 +263,7 @@ else
     FID = fopen(param_file,'w');
     if FID==-1, error('Cannot open file %s', param_file); end
     fprintf(FID, '%s\n', column_labels);
-    % build a format string matching types: %s for text, %g or %.2f for numbers
-    fmt = '%s,%s,%d,%.6g,%.6g,%d,%s\n';
+    fmt = '%s,%s,%d,%.6f,%.6f,%.6f,%s\n';
     % ensure label and system are char (use char(...) or string(...))
     fprintf(FID, fmt, char(label), char(system), samples, hourly_var, rand_var, rng_seed, char(sol_type));
     fclose(FID);

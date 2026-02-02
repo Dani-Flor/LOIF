@@ -1,4 +1,3 @@
-
 import pandas as pd
 from sklearn.metrics import classification_report  #, f1_score,recall_score, precision_score
 from sklearn.neighbors import KNeighborsClassifier
@@ -60,6 +59,46 @@ def lod_exp_exec(Training_all,otl_col,outage_labels,k,output,f):
     return Report
 
 
+
+# From our previous work, we evaluated each OTL by finding a set of detectable outages with the use of LOIFs.
+# LOIF measures the change in power flow of an OTL due to the outage of another in a system.
+# In order to find detectable outages using LOIF, we previously implemented a filtering method where each outage in our detectable set (Sa)
+# must have an LOIF that satisfies the following thresholds
+#       1) LOIF >= gamma  : We want to get rid of outages that will have little impact to the OTL (power flow does not change after outage/ power redistribution).
+#    After the first stage of filtering we then have a set of outages that will have a notciable change in power flow at the OTL.
+#    From this smaller set (Sa) of outages, we then look for outages that will have different impacts on the OTL. The change in power flow at the OTL should be different for each outage.
+#    To do this we find the differences in LOIFs for each outage, and select outages whose LOIF's are seperated by a minimum distance of beta 
+#       2) mindist(LOIF) >= beta : We find well-separated LOIFs, by sorting all LOIFs in descending order and finding the differences in consecutive values abs(Sa[i] - Sa[i-1]).
+#       With these diferences we select LOIFs whose difference is greater than or equal to beta.
+# With these two thresholds we find detectable outage set (Sa). This set of outages should be easily classified with our ML model when only looking at the power flow of the OTL.
+# 
+# In our previous work we wanted to see the effect of different gamma and beta values and we varied each variable by [0.1, 0.2, 0.4].
+#  With Sa we created a observability metric, eta, which we used to select a set of OTLs of sizes [2, 4, 8]. 
+#  Because eta is directly influenced by gamma and beta, the OTLs that are selected might change which can affect ML performance. 
+# In order to find the best set of detectable outages, we would like to find the optimal values of gamma and beta for each OTL that will result in good ML performance.
+#
+# There are two classification measures that we will use to find the best gamma and beta:
+#   - Precision: True Positives / (True Positves + False Positives)
+#       True Positives: The number samples of a particular class (outage) that the ML model predicted correctly
+#       False Positives: The number of samples that were incorrectly predicted as the class (outage) by the ML model.
+#      **IF Precision is 1.0, then we know that there are no False Positives meaning that all the samples of the particular class were predicted correctly.
+#   -Avg. F1-Score: The harmonic mean of precision and recall, in other words, overall performance metric.
+#      **IF Avg. F1-Score is 1.0, then we know that we got 100% accuracy on classification of all labels (outages).
+# 
+# In order to find the minimum/optimal gamma, we use precision specifically for the class representing normal conditions (0). 
+#    - If precision for normal conditions is 1.0, then we know that the outages in the detectable outage set (Sa) provides a significant change in power flow on the OTL 
+#     (enough not to be confused with the power flow during normal conditions)
+#    - This is done through an iterative process, where we first start with a very low gamma and increase by small increments with each iteration. 
+#      In each iteration we find Sa using the current gamma and run KNN classifier as our ML model to collect a classification report.
+#      From this report, we observe the precision for normal conditions and check if it meets desired value of 1.0 (desired precision)
+#      Once we reach desired precision, we found our optimal/minimum gamma for OTL. 
+#
+# In order to find the minimum/optimal best, we use Avg. F1-Score (overall peformance) for all classes.
+#    -If Avg. F1-Score is 1.0, then we know that the outages in Sa have LOIFs that are separated from each other by a minimum distance of beta and all outages are predicted correctly.
+#    -This is done through an iterative process, where we first start with a very low beta and increase by small increments with each iteration.
+#     In each iteration, we find Sa using the current beta and run KNN classifier as our ML model to collect a classification report.
+#     From this report, we observe the Avg. F1-Score and check if it meets desired value of 1.0 (desire f1-score)
+#     Once we reach desired f1-score, we found our optimal/minimum beta for OTL.
 def lod_detectable_subsetgen(k,desired_precision,desired_f1score,f,LOIF,Ta_sets,Training_all):
     print('Finding Sa Subsets......')
     #Dataframe Lists
@@ -67,67 +106,79 @@ def lod_detectable_subsetgen(k,desired_precision,desired_f1score,f,LOIF,Ta_sets,
     set_lenghts = []  #Will append the size of every final Sa subset of each observed transmission line
     min_gammas = []   #Will append the minimum gamma for each observed transmisson line
     min_betas  = []   #Will append the minimum beta for each observed transmission line
-    final_f1s = []
-    index_col = []
+    final_f1s = []    #Will append the avg. f1 scores for each observed transmsission line
+    index_col = []    #Will append the line number for each observed transmission line
 
 
     for i in LOIF.index[:]:
-        # print(f'Line {i}')
-        # print(f'Line {i}')
-        Ta = Ta_sets[i]
-        Sa = pd.Series(Ta)
-        # print(Sa)
-        gamma = 1e-30
-        beta = 1e-30
-        otl_col = []
-        otl_col.append(f'PF Line {i}')  
-        otl_col.append(f'QF Line {i}')
-        otl_col.append(f'PT Line {i}')
-        otl_col.append(f'QT Line {i}')
-        otl_col.append(f'Label')
+        Ta = Ta_sets[i]      #Ta will hold the LOIFs of all outages for current OTL i (grab from dict.)   #create pandas serires Sa (initially holds LOIFs of all outages)
 
-        current_precision = 0.0
-        while(1):
-            Sa = pd.Series(Ta)
+        gamma = 1e-30       #start with low gamma
+        beta = 1e-30        #start with low beta
+
+        #pull columns from Training Data that are needed (Power Flows of OTL + Label)
+        #stops from having to access whole dataset.
+        otl_col = []        #column labels of OTL to filter Training Data 
+        otl_col.append(f'PF Line {i}')  #Active Power at From Bus
+        otl_col.append(f'QF Line {i}')  #Reactive Power at From Bus
+        otl_col.append(f'PT Line {i}')  #Active Power at To Bus
+        otl_col.append(f'QT Line {i}')  #Reactive Power at To Bus
+        otl_col.append(f'Label')        #Class labels
+
+        #Find Min. Gamma
+        current_precision = 0.0  #intialize current precision with zero (will update with each iteration)
+        while(1): #Keep looping until minimum gamma is found
+            Sa = pd.Series(Ta)              #create pandas serires Sa (initially holds LOIFs of all outages)
             Sa = Sa[abs(Sa) >= gamma]       #Find LOIFs greater than gamma
-            # print(Sa)
-            outage_labels = [i] + Sa.index.to_list()   
-            outage_labels = list(set(outage_labels))
+    
+            #Get the line numbers of the outages that satisfied current gamma condition.
+            outage_labels = [i] + Sa.index.to_list()   #Always include the line number of the OTL (Easy to detect, since no power should be flowing through OTL)
+            outage_labels = list(set(outage_labels))   #used to pull the rows from Training Data for the following classes
+
+            #Runn KNN classifier (Make Sure to include normal condtions, 0, in outage_labels)
             Report = lod_exp_exec(otl_col=otl_col,outage_labels=[0] + outage_labels,k=k,output=False,f=f,Training_all=Training_all)
-            current_precision = round(Report['0']['precision'], 2)
+            current_precision = round(Report['0']['precision'], 2)    #Collect Precision For Normal Conditions (Label/Class: 0)
 
-
-            if (current_precision >= desired_precision) or (len(Sa)==1) or (gamma == 10):
+            #Check if current precision meets the desired precision of 1.0 (or other value depending on user)
+            #If desired precision is reached OR Sa subset if of OTL hase length of 1, or if gamma passes the value 10 (Loop Stopper, usually means it failed to reach desired precision)
+            if (current_precision >= desired_precision) or (len(Sa)==1) or (gamma == 10):  #If desired precision is reached save min gamma and print classification report to Txt file
                 mingamma = gamma
                 print(f'Line {i} --> gamma: {mingamma}',file=f)
-                Report = lod_exp_exec(otl_col=otl_col,outage_labels=outage_labels,k=k,output=True,f=f,Training_all=Training_all)
+                Report = lod_exp_exec(otl_col=otl_col,outage_labels=[0]+outage_labels,k=k,output=True,f=f,Training_all=Training_all)
                 break
-            elif gamma < 0.1:
+            elif gamma < 0.1:   #If desired precision is not met, and gamma is below 0.1, increase by a factor of 1e1
                 gamma = gamma*(1e1)
-            else:
+            else:              #If desired precision is not met, and gamma is above 0.1, increase in increments of 0.01
                 gamma = round(gamma + 0.01,2)
 
-        current_f1score = 0.0
-        while(1):
-            Sa = pd.Series(Ta)
-            Sa = Sa[abs(Sa) >= mingamma]
-            Sa = Sa.sort_values(ascending=False)  #Organize in descending order
+        #Find Min. Beta
+        current_f1score = 0.0  #initalize current f1score with zero (will update with each iteration)
+        while(1): #Keep looping until minimum beta is found
+            Sa = pd.Series(Ta)  #create pandas serires Sa (initially holds LOIFs of all outages)
+            Sa = Sa[abs(Sa) >= mingamma]  #Include min. gamma threshold
+            Sa = Sa.sort_values(ascending=False)  #Organize LOIFs in descending order
             
-            Sa = Sa[Sa.diff().abs().fillna(beta) >= beta]
+            #Find LOIFs whose abs. differences are greater than beta, provides LOIFs that are separated by a distance of beta
+            Sa = Sa[Sa.diff().abs().fillna(beta) >= beta]  
 
-            outage_labels = [i] + Sa.index.to_list()
-            outage_labels = list(set(outage_labels))
+            outage_labels = [i] + Sa.index.to_list()  #Always include the line number of the OTL (Easy to detect, since no power should be flowing through OTL)
+            outage_labels = list(set(outage_labels))  #used to pull the rows from Training Data for the following classes
+            
+            #Runn KNN classifier (Make Sure to include normal condtions, 0, in outage_labels)
             Report = lod_exp_exec(otl_col=otl_col,outage_labels=[0] + outage_labels,k=k,output=False,f=f,Training_all=Training_all)
-            current_f1score = Report['macro avg']['f1-score']       #Get F1-Score from classification report
-            if (current_f1score >= desired_f1score) or (len(Sa)==1) or (beta == 10):
+            current_f1score = Report['macro avg']['f1-score']       #Collect Avg. F1-Score (Overall Performance)
+            
+            #Check if current f1-score meets the desired f1-score of 1.0 (or other value depending on user)
+            #If desired f1-score is reached OR length of Sa is 1 OR if beta passes the value 10 (Loop Stopper, usually means it failed to reach desired F1-Score)
+            if (current_f1score >= desired_f1score) or (len(Sa)==1) or (beta == 10): #If desired f1-score is reached save min beta and print classification report to Txt file
                 minbeta = beta
                 print(f'Line {i} --> beta: {minbeta}',file=f)
-                Report = lod_exp_exec(otl_col=otl_col,outage_labels=outage_labels,k=k,output=True,f=f,Training_all=Training_all)
+                Report = lod_exp_exec(otl_col=otl_col,outage_labels=[0] + outage_labels,k=k,output=True,f=f,Training_all=Training_all)
                 final_f1s.append(current_f1score)
                 break
-            elif beta < 0.1:
+            elif beta < 0.1:   #If desired f1-score is not met, and beta is below 0.1, increase by a factor of 1e1
                 beta = beta*(1e1)
-            else:
+            else:              #If desired f1-score is not met, and gamma is above 0.1, increase in increments of 0.01
                 beta = round(beta + 0.01,2) 
      
         min_gammas.append(mingamma)
@@ -136,9 +187,12 @@ def lod_detectable_subsetgen(k,desired_precision,desired_f1score,f,LOIF,Ta_sets,
         final_sets.append(outage_labels)
         index_col.append(i)
 
+    #Save Reults for Each OTL into DataFrame and Return DataFrame
     DF = pd.DataFrame({'Lines':index_col,'min_gamma':min_gammas,'min_beta':min_betas,'Total_outages':set_lenghts,'Sa_Subsets':final_sets,'Actual_F1-Score':final_f1s})
     DF=DF.set_index('Lines')
     return DF
+
+
 
 def max_coverage_greedy(mgb_df,OTL_num,f,Training_all):
     print('Starting MCP Algorithm......')
@@ -244,6 +298,10 @@ def lod_otl_select(mgb_df,f,Training_all,LOIF):
     Results['Eta'] = high_eta(mgb_df=mgb_df.sort_values(by='Total_outages',ascending=False),MCP= Results['MCP'],f=f,Training_all=Training_all)
     print('\n',file=f)
     Results['Random'] = random_OTL(MCP=Results['MCP'],f=f,Training_all=Training_all,LOIF=LOIF)
+
+
+
+
 ##MAIN
 def main(k,desired_precision,desired_f1):
     start_time = time.perf_counter()
@@ -267,7 +325,10 @@ def main(k,desired_precision,desired_f1):
     Training_all.index = Training_all['Label']
 
     sol_type = fpath3[fpath3.index('.csv')-2:fpath3.index('.csv')]
-    data_label = re.search(rf"Branchdata_{case}_(.+?)_{sol_type}\.csv",fpath3).group(1)
+    print(sol_type)
+    data_label = re.search(r'([^/]+)_',fpath3).group(1)
+    data_label = data_label[:data_label.index('_')]
+
 
     current_path = os.getcwd()   #Get the address of current path
     folder_path = f'{current_path}/Final_Sa_{case}_{data_label}_{sol_type}_{matrix}' #Create Path for New Folder to store (Min Gamma Results)

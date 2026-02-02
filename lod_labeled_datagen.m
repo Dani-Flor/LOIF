@@ -71,11 +71,13 @@ if isempty(otl)   % sentinel => all lines
 elseif ~all(ismember(otl,1:num_lines))
     error('System only has %d lines. ML contains out-of-range entries.', num_lines);
 end
-
 %RNG Seed
 %If rng_seed = 0, Generate seed using posixtime
 if rng_seed == 0
-    seed = posixtime(datetime('now'));
+    %calculate POSIX Time manually
+    seed = (now - 719529) * 86400;  %now function is compatible with both
+    %MATLAB and Octave: (serial number of current date - the serial number
+    %                                    Jan 1,1970) * number of seconds in a day
 else
     %Else, use seed provided by user
     seed = rng_seed;
@@ -83,7 +85,7 @@ end
 rng(seed);
 
 %% Initialize Variables
-num_samples = samples + 1;
+num_samples = samples;
 num_rows  = num_lines + 1;       
 num_col  = numel(otl)*4 + 1;              % 4 features per line([PF,QF,PT,QF]) + label
 
@@ -101,7 +103,7 @@ PD_copy = mpc_copy.bus(:, PD);  %Copy of Active Loads
 QD_copy = mpc_copy.bus(:, QD); %Copy of Reactive Loads
 
 for i = 0:samples
-    
+
     col = i + 1;
 
     % Random load variation for current sample
@@ -139,7 +141,7 @@ for i = 0:samples
 
             f = results0.branch(otl, [PF QF PT QT]); %Collect Active/Reactive Power for OTLs
             Dfeat = reshape(f.', 1, []); %vector to array
-     
+
             row = row + 1;
             labeled_dataset(row,:) = [Dfeat, 0]; % Save Features and Label to labeled dataset
         else
@@ -166,7 +168,7 @@ for i = 0:samples
             current_results(x+1) = 0;
             continue;
         end
-        
+
         %% Load case, fix generation then disconnect line. After that run PF solution
         mpc_out = mpc_updated;               % load system with load variation
         mpc_out.gen = gen_dat;               % fixed generation from normal OPF
@@ -222,8 +224,8 @@ end
 column_labels = strcat(column_labels,sprintf('Label'));
 
 %% Create CSV files for Labeled Dataset, Convergence Results, and User Parameters
-convFile = sprintf('Convergence_Data_%s_%s_%s.csv', system, label, sol_type);  %Name of file for Convergence Results
-dataFile = sprintf('Branchdata_%s_%s_%s.csv',      system, label, sol_type);   %Name of file for labeled dataset
+convFile = sprintf('%s_Convergence_Data_%s_%s.csv', label, system, sol_type);  %Name of file for Convergence Results
+dataFile = sprintf('%s_trainingdata_%s_%s.csv',     label, system, sol_type);   %Name of file for labeled dataset
 
 %convergence Restuls CSV
 csvwrite(convFile, convergence_data);

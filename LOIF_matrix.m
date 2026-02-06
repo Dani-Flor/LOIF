@@ -1,6 +1,10 @@
 %Run LOIF_matrix(case file name) --> Ex. LOIF_matrix('case118')
 
-function LOIF_matrix(system)
+function LOIF_matrix(system,output_dir)
+if nargin == 1
+    output_dir = "./";
+end
+
 mpc = loadcase(system); %
 mpc = ext2int(mpc);
 define_constants
@@ -32,7 +36,7 @@ for i=1:size(mpc.branch,1) %for every row
                LOIF_pu(i,j) = LODF_MW(i,j) + Pre_branchdata(i);
                LOIF_pu(i,j) = LOIF_pu(i,j) / s_base;
                LOIF_change(i,j) = LODF_MW(i,j)/Pre_branchdata(i);
-          
+
     end
 end
 row_labels = "";
@@ -42,7 +46,7 @@ for j=1:size(mpc.branch,1)
     column_labels = strcat(column_labels,sprintf('outage%d,',j));
 end
 
-lodf_file = sprintf('LODFmatrix_%s.csv',system);
+lodf_file = sprintf('%sLODFmatrix_%s.csv',output_dir,system);
 csvwrite(lodf_file, LODF);
 % Read the contents of the specified file
 S = fileread(lodf_file);
@@ -57,7 +61,7 @@ fprintf(FID, "%s", S);
 fclose(FID);
 
 
-loif_file = sprintf('LOIFmatrix_%s.csv',system);
+loif_file = sprintf('%sLOIFmatrix_%s.csv',output_dir,system);
 csvwrite(loif_file, LOIF_change);
 % Read the contents of the specified file
 S = fileread(loif_file);

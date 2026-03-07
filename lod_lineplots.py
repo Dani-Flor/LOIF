@@ -9,7 +9,7 @@ import pandas as pd
 # Parametes
 # system: Name of the case system being used (Ex. case118,case_ieee30,etc.)
 # test_results: This is a dataframe storing the results of each test (Ex. Test1 through Test24)
-def plot_data(system, test_results,matrix, style=1):    
+def plot_data(system, test_results,matrix,fc_otls, style=1):    
     # 1. Prepare Dataframe: Reset index (Methods) and map to full names
     summary = test_results.reset_index().rename(columns={"index": "Method"})
     method_map = {"HE": "High Eta", "Rand": "Random", "MCP": "MCP"}
@@ -25,7 +25,7 @@ def plot_data(system, test_results,matrix, style=1):
     )
 
     # 3. Categorical Order: Ensure "FC" stays at the end and types match
-    otl_order = ["1", "2", "4", "8", "FC"]
+    otl_order = ["10", "20", "40", "80", "FC"]
     summary_long["OTL"] = summary_long["OTL"].astype(str)
     summary_long["OTL"] = pd.Categorical(summary_long["OTL"], categories=otl_order, ordered=True)
 
@@ -41,6 +41,8 @@ def plot_data(system, test_results,matrix, style=1):
 
         # Optional: Add smaller "minor" ticks at 0.05 without labels
         ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.01))
+        custom_x_labels = ['1','2','4','8',f'FC({len(fc_otls)})']
+        ax.set_xticklabels(custom_x_labels)
         plt.ylabel("F1-score")
         plt.xlabel("OTL Level")
         plt.title(f"{system} – Method Performance With 95% CI ({matrix})")

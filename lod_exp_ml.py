@@ -3,7 +3,7 @@ from sklearn.metrics import classification_report  #, f1_score,recall_score, pre
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-
+import os
 
 ####################################### KNN classifier #########################################################
 # This function filters our training data by focusing only on the OTLs we are interested for all outage scenarios plus normal conditions.
@@ -12,13 +12,12 @@ from sklearn.preprocessing import MinMaxScaler
 # After that we then fit our training data to a KNN classifier and predict the labels of our testing data.
 # Parameters
 # - otl_set: The columns in training data representing the OTLs that are selected in "lod_otl_select.py" for MCP, High Eta, and Random
-# - outage_set: The rows in training data representing the outages we are interested in (contains all possible outages).
 # - k: Number of Neighbors to consider in KNN
 # - output: TRUE/FALSE, if true save results in text file "f"
 # - training_data: This is the labeled power flow data obtained from MATLAB script "lod_labeled_datagen.m"
 # Output
 # Report: This the classification report (in dictionary form)
-def lod_exp_exec(otl_set,outage_set,k,output,training_data):
+def lod_exp_exec(otl_set,k,output,training_data):
     #In training data we filter out data to only look at the obsevation points (Features) and outages we are interested in.
     column_labels = []
     for j in otl_set:
@@ -28,9 +27,8 @@ def lod_exp_exec(otl_set,outage_set,k,output,training_data):
         column_labels.append(f'QT Line {j}')
     column_labels.append(f'Label')
 
-    row_labels = [0] + outage_set  #Include rows for normal conditions
 
-    Training_BD = training_data.loc[row_labels,column_labels]
+    Training_BD = training_data.loc[:,column_labels]
 
     # Here we use MinMaxscaler to convert our measurments into values from 0 to 1
     X = Training_BD.iloc[:,:-1]  ## Features
@@ -55,3 +53,4 @@ def lod_exp_exec(otl_set,outage_set,k,output,training_data):
     if output == True:
         print(classification_report(True_Labels,Predictions))
     return Report
+

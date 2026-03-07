@@ -25,24 +25,24 @@
 
 function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var,rng_seed,sol_type,otl)
     %% Setup argument default values where necessary
-    % (A) 8 Parameters are given except: otl,
+    % (A) 8 Parameters are given except: otl, 
     %      default: All lines
     %
-    % (B) 7 Parameters are given except: sol_type & otl
+    % (B) 7 Parameters are given except: sol_type & otl 
     %      default: AC, All lines
     %
     % (C) 6 Parameters are given except: rng_seed,sol_type, & otl
     %      defult:POSIX Time, AC, All lines
-    %
+    % 
     % (D) 5 Parameters are given execpt: rand_var,rng_seed,sol_type,otl
     %      default: 5%,POSIX Time, AC, All lines
     %
     %  (E) 4 Parameters are given except: hourly_var, rand_var, rng_seed, sol_type, otl
-    %      default: 1, 5%, POSIX Time, AC, All lines
-    %
+    %      default: 1, 5%, POSIX Time, AC, All lines  
+    % 
     % (F) 3 Paramters are given except: output_dir, hourly_var, rand_var, rng_seed, sol_type,otl
     %      default: Current Directory, 1, 5, POSIX Time, AC, All lines
-    %
+    % 
     % (G) ERROR if User does  not provide main parameters: system, label, samples
     if nargin == 8                          %(A)
         otl = [];
@@ -87,10 +87,6 @@ function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var
         mkdir(output_dir);
     end
 
-
-    %% Calculate LOIF and LODF Matrices
-    LOIF_matrix(system,output_dir)
-
     %% Initialization
     % (A) Start Clock
     % (B) Load MATPOWER indices (PD, QD, BR_STATUS, PF, QF, PT, QT)
@@ -102,12 +98,12 @@ function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var
     % (H) Check if user wants all lines or if otls provided by user are valid
     % (I) Set RNG Seed Provided By User or set RNG seed with POSIX Time
 
-    tic;                                                               %(A)
+    tic;                                                               %(A)                           
     define_constants;                                                  %(B)
-    warning('off','all');                                              %(C)
+    warning('off','all');                                              %(C) 
     mpopt = mpoption('verbose',0,'out.all',0);                         %(D)
     mpc_copy = loadcase(system);                                       %(E)
-    num_lines  = size(mpc_copy.branch,1);                              %(F)
+    num_lines  = size(mpc_copy.branch,1);                              %(F)                   
 
     if (strcmp(sol_type,'AC')) | (strcmp(sol_type,'DC'))               %(G)
     else
@@ -173,7 +169,7 @@ function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var
             percent_var = rand_var * 0.01;
             a = -percent_var;
             b = percent_var;
-            Load_Variation = (b-a) * rand() + a;
+            Load_Variation = (b-a) * rand() + a; 
         end
 
         v = hourly_var * (1 + Load_Variation);                         %(C)
@@ -223,7 +219,7 @@ function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var
                 Dfeat = reshape(f.', 1, []);                           %(J)
                 row = row + 1;                                         %(K)
                 labeled_dataset(row,:) = [Dfeat, 0];                   %(L)
-            else
+            else                                                       
                 previous_results(1) = 0;                               %(M)
                 current_results(1) = 0;                                %(N)
                 convergence_data(:, col+1) = current_results;          %(O)
@@ -240,9 +236,9 @@ function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var
     % (A) Before Anything Check If Current Outage Scenario Previously Converged
     % (B) IF Previously Failed Mark Current Result with 0 (Skip Forever)
     % (C) IF Previously Failed Skip PF Run and Feature Collection
-    % (D) Update System With Load Variation
+    % (D) Update System With Load Variation 
     % (E) Fix Generation of System With OPF Results For Normal Conditions
-    % (F) Change Branch Status of line to 0 (Simulate Outage)
+    % (F) Change Branch Status of line to 0 (Simulate Outage) 
     % (G)  Check Solution Type
     % (H)  IF AC run AC PF Solution
     % (I)  ELSE run DC PF Solution
@@ -257,13 +253,13 @@ function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var
     % (R) Add Power Flow Measurements (Features) + Label to Labeled Dataset
     % (S) Store Current Sample's Convergence Results to Convergence Dataset
     % (T) Print Progress Every 5 Samples
-        for x = 1:num_lines    %For Each Transmission Line
+        for x = 1:num_lines    %For Each Transmission Line                                        
             if previous_results(x+1) == 0                              %(A)
                 current_results(x+1) = 0;                              %(B)
                 continue;                                              %(C)
             end
 
-            mpc_out = mpc_updated;                                     %(D)
+            mpc_out = mpc_updated;                                     %(D)         
             mpc_out.gen = gen_dat;                                     %(E)
             mpc_out.branch(x, BR_STATUS) = 0;                          %(F)
 
@@ -278,7 +274,7 @@ function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var
                 current_results(x+1) = 0;                              %(L)
                 continue;                                              %(M)
             else
-                current_results(x+1) = 1;                              %(N)
+                current_results(x+1) = 1;                              %(N) 
             end
 
             f = results.branch(otl, [PF QF PT QT]);                    %(O)
@@ -288,7 +284,7 @@ function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var
         end
         convergence_data(:, col+1) = current_results;                  %(S)
         if mod(col,5) == 0                                             %(T)
-            fprintf(['Progress: sample %d / %d  ' ...
+            fprintf(['Progress: sample %d / %d  ' ...                  
                 '(Current Load_Variation = %.4f)\n'], ...
                 col, samples, Load_Variation);
         end
@@ -300,8 +296,48 @@ function lod_labeled_datagen(label,system,samples,output_dir,hourly_var,rand_var
     duration = toc;  %Stop Clock
     fprintf('Total Time: %.2f seconds\n', duration);
 
+    %% Calculate LOIF and LODF Matrices
+    failed_indices = convergence_data(any(convergence_data(:, 2:end) == 0, 2), 1);
+    [LOIF,LODF]=LOIF_matrix(system);
+    LOIF(:,failed_indices)= 0;
+    LODF(:,failed_indices) = 0;
+    
+    row_labels = "";
+    column_labels = "";
+    for j=1:size(mpc_copy.branch,1)
+        row_labels = strcat(row_labels,sprintf('line%d',j));
+        column_labels = strcat(column_labels,sprintf('outage%d,',j));
+    end
+    
+    lodf_file = sprintf('%sLODFmatrix_%s.csv',output_dir,system);
+    csvwrite(lodf_file, LODF);
+    % Read the contents of the specified file
+    S = fileread(lodf_file);
+    % Open the file for writing, and check for successful opening
+    FID = fopen(lodf_file, 'w');
+    if FID == -1, error('Cannot open file %s', lodf_file); end
+    % Write column labels to the file
+    fprintf(FID, "%s\n", column_labels);
+    % Write the contents read from the file back to it
+    fprintf(FID, "%s", S);
+    % Close the file
+    fclose(FID);
 
-    %% Generate output files: convergence, training data, and user parameters
+    loif_file = sprintf('%sLOIFmatrix_%s.csv',output_dir,system);
+    csvwrite(loif_file, LOIF);
+    % Read the contents of the specified file
+    S = fileread(loif_file);
+    % Open the file for writing, and check for successful opening
+    FID = fopen(loif_file, 'w');
+    if FID == -1, error('Cannot open file %s', loif_file); end
+    % Write column labels to the file
+    fprintf(FID, "%s\n", column_labels);
+    % Write the contents read from the file back to it
+    fprintf(FID, "%s", S);
+    % Close the file
+    fclose(FID);
+
+   %% Generate output files: convergence, training data, and user parameters
     % (A) Let user know that CSV files are being created
     % (B) Create File Name For Convergence Data CSV
     % (C) Create File Name For Training Data CSV

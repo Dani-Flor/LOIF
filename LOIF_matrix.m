@@ -1,6 +1,6 @@
 %Run LOIF_matrix(case file name) --> Ex. LOIF_matrix('case118')
 
-function LOIF_matrix(system,output_dir)
+function [LOIF,LODF]=LOIF_matrix(system,output_dir)
 if nargin == 1
     output_dir = "./";
 end

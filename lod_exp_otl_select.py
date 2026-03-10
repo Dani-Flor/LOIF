@@ -12,10 +12,10 @@ import os
 # system: This is the name of the case system the use is interested in. Ex. 'case_ieee30','case118','case_ACTIVSg2000','caseWisconsin_1664'
 # data_dir: This is the folder path containing you important files needed to run to code such as the
 #            LOIF/LODF matrix, convergence data, and training data
-# matrix: The user has the option to use LOIF or LODF matrices
+# matrix: The user has the option to use 'LOIF' or 'LODF' matrices ['LOIF' is the default value]
 # Output
 # Sa_subsets: a list of lists containing the detectable susbets (Sa) of all OTLs
-def lod_detectable_subsetgen(beta,gamma,system,data_dir,matrix):
+def lod_detectable_subsetgen(beta,gamma,system,data_dir,matrix='LOIF'):
     print('Finding Sa Subsets......')
     folder_path = data_dir
     os.chdir(folder_path)
@@ -68,13 +68,13 @@ def lod_detectable_subsetgen(beta,gamma,system,data_dir,matrix):
 # 8: if U = ∅ then
 # 9: break
 # 10: end if
-# 11: S∗ ←argmaxS∈S\C |S ∩U|
+# 11: S∗ ←argmaxS∈S\C |S ∩ U|
 # 12: C ←C∪{S∗}
 # 13: R←R∪S∗
 # 14: U ←U\S∗
 # 15: end for
 # 16: Return (C,|C|)
-def mcp(Sa,X):
+def greedymcp(Sa,X):
     Sa_lengths = [len(i) for i in Sa]
     dict = {}
     dict['Sa_Subsets'] = Sa
@@ -85,36 +85,36 @@ def mcp(Sa,X):
         X = 30000
     print('Starting MCP Algorithm......')
     C = []  # Currently Selected sets
-    R = []  # Set of Covered Outages
+    R = []  # Set of Covered Line Outages
 
-    # Initialize U as the set of all outages (uncovered)
+    # Initialize U (set of uncovered line outages) as the set of all lines
     num_lines = len(Sa)
     U = list(range(1, num_lines + 1))
 
     for i in range(0,X):
-        diffs = {}  # Will hold the intersection size with U for each subset
+        intersect = {}  # Will hold the intersection size with U for each subset
 
-        # This for loop will go through Sa subsets to get the intersection with U
+        # This for loop will go through the Sa subsets to get the intersection sets with U
         for j in df.index:  # For every observation point
-            current_set = df.loc[j,'Sa_Subsets']
+            temp_set = df.loc[j,'Sa_Subsets']
 
             # Calculate the intersection with uncovered set U
-            diffs[f'{j}'] = len(list(set(current_set).intersection(U)))
+            intersect[f'{j}'] = len(list(set(temp_set).intersection(U)))
 
         #S∗ ←argmaxS∈S\C |S ∩ U|
-        largest_OTL = max(diffs, key=diffs.get)   # Gets the Sa subset with the largest intersection with U
+        S_star = max(intersect, key=intersect.get)   # Gets the Sa subset in S with the largest intersection with U
 
-        if diffs[largest_OTL] == 0:  # If U is empty or no intersection, stop iteration
+        if intersect[S_star] == 0:  # If U is empty or no intersection, stop iteration
             break
-        else:                        # If there are still uncovered outages, continue iteration and update U
+        else:                       # If there are still uncovered line outages, continue iteration and update U
             
-            C.append(int(largest_OTL))  #Update list of Selected Sets with current OTL selected
-            R = list(set(R + [int(largest_OTL)])) #Update the list of covered outages with outages covered by selected OTL
+            C.append(int(S_star))  #Update list of Selected Sets with current OTL selected
+            R = list(set(R + [int(S_star)])) #Update the list of covered line outages with those covered by selected OTL
 
-            current_set = df.loc[int(largest_OTL),'Sa_Subsets']
+            temp_set = df.loc[int(S_star),'Sa_Subsets']
 
-            #Update set of uncovered outages (remove outages that are covered with selected OTL)
-            U = list(set(U) - set(current_set))
+            #Update set of uncovered line outages (remove those that are covered with selected OTL)
+            U = list(set(U) - set(temp_set))
 
     return C  #Only return the set of selected OTLs, we will predict all outages using this set. We can get |C| using len(C)
 

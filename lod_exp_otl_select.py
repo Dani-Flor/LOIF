@@ -56,6 +56,24 @@ def lod_detectable_subsetgen(beta,gamma,system,data_dir,matrix):
 # X: The number of OTLs to select in MCP algorithm (1,2,4,8, or Full Coverage)
 # Output
 # OTLs: This is the set of OTLs that were selected using MCP
+
+###############Psuedo code from Journal########################################
+# 1: Input: Set of all lines: L, collection of sa sets: S, desired number of sets: X
+# 2: Output: Selected sets: C, coverage size: |C|
+# 3: C ←∅
+# 4: R ←∅
+# 5: U ←L
+# 6:
+# 7: for i = 1 to k do
+# 8: if U = ∅ then
+# 9: break
+# 10: end if
+# 11: S∗ ←argmaxS∈S\C |S ∩U|
+# 12: C ←C∪{S∗}
+# 13: R←R∪S∗
+# 14: U ←U\S∗
+# 15: end for
+# 16: Return (C,|C|)
 def mcp(Sa,X):
     Sa_lengths = [len(i) for i in Sa]
     dict = {}
@@ -66,36 +84,39 @@ def mcp(Sa,X):
     if X == 'FC':
         X = 30000
     print('Starting MCP Algorithm......')
-    OTLs = []
+    C = []  # Currently Selected sets
+    R = []  # Set of Covered Outages
 
-    # print('-----------------MCP GREEDY ALGORITHM-------------------')
-    collection_set = []  #Will be used to store the outages we have already covered
+    # Initialize U as the set of all outages (uncovered)
+    num_lines = len(Sa)
+    U = list(range(1, num_lines + 1))
+
     for i in range(0,X):
-        diffs = {} #Will hold the number of new elements each subset has so that we can compare all of them at the end
-        
+        diffs = {}  # Will hold the intersection size with U for each subset
 
-        #This for loop will go through Sa subsets to get the difference between each subset and and the collection set for current iteration
-        for j in df.index:  #For every observation point
+        # This for loop will go through Sa subsets to get the intersection with U
+        for j in df.index:  # For every observation point
             current_set = df.loc[j,'Sa_Subsets']
 
-            #Calculate the diffrence between current iteration sets and collection set to see which outages are not covered yet
-            diffs[f'{j}'] = len(list(set(current_set).difference(collection_set)))   #Counts the number of uncovered outages
+            # Calculate the intersection with uncovered set U
+            diffs[f'{j}'] = len(list(set(current_set).intersection(U)))
 
-        largest_OPL = max(diffs, key=diffs.get)   #Gets the Sa subset with the largest number of elements not yet covered in collection set.
-        # print(f'Largest Subset (Iteration {i+1}): {largest_OPL} --> {diffs[largest_OPL]}')
-        if diffs[largest_OPL] == 0:  #If there are no more uncovered outages stop iteration
+        #S∗ ←argmaxS∈S\C |S ∩ U|
+        largest_OTL = max(diffs, key=diffs.get)   # Gets the Sa subset with the largest intersection with U
+
+        if diffs[largest_OTL] == 0:  # If U is empty or no intersection, stop iteration
             break
-        else:                        #If there are still uncovered outages, continue iteration and update collection set.
-            OTLs.append(int(largest_OPL))
-            current_set = df.loc[int(largest_OPL),'Sa_Subsets']
-            collection_set = list(set(collection_set + current_set))
+        else:                        # If there are still uncovered outages, continue iteration and update U
+            
+            C.append(int(largest_OTL))  #Update list of Selected Sets with current OTL selected
+            R = list(set(R + [int(largest_OTL)])) #Update the list of covered outages with outages covered by selected OTL
 
-    # print(f'OTLs ({len(OTLs)}):\n',OTLs)
+            current_set = df.loc[int(largest_OTL),'Sa_Subsets']
 
-    # print(f'Covered Outages({len(collection_set)}):\n',collection_set)
-    # print('---------------------End Of MCP GREEDY ALGORITHM----------------------')
+            #Update set of uncovered outages (remove outages that are covered with selected OTL)
+            U = list(set(U) - set(current_set))
 
-    return OTLs
+    return C  #Only return the set of selected OTLs, we will predict all outages using this set. We can get |C| using len(C)
 
 ## Check function for Self Containment
 # MCP_otls = mcp(Sa=Sa,X='FC')   #'FC' for full coverage
@@ -148,14 +169,9 @@ def random_otl(Sa,X):
     num_lines = len(Sa)
     line_numbers = range(1,num_lines+1) 
     # print('------------------RANDOM OTL SELECTION------------------------------------')
-    rand_list = []
-    for i in range(1,11):
-        # print(f'Random Test {i}')
-        rand_OTLs = random.sample(line_numbers, X,)
-        # print(f'Random OTLs ({len(rand_OTLs)}): {rand_OTLs}\n')
-        rand_list.append(rand_OTLs)
+    rand_otls = random.sample(line_numbers, X,)
     # print('-------------------END of RANDOM OTL SELECTION---------------------------')
-    return rand_list
+    return rand_otls
 
 ## Check function for Self Containment
 # Rand = random_otl(Sa=Sa,X=34)

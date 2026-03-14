@@ -16,7 +16,6 @@ import os
 # Output
 # Sa_subsets: a list of lists containing the detectable susbets (Sa) of all OTLs
 def lod_detectable_subsetgen(beta,gamma,system,data_dir,matrix='LOIF'):
-    print('Finding Sa Subsets......')
     folder_path = data_dir
     os.chdir(folder_path)
     matrix_file = f"{matrix}matrix_{system}.csv"
@@ -83,7 +82,6 @@ def greedymcp(Sa,X):
 
     if X == 'FC':
         X = 30000
-    print('Starting MCP Algorithm......')
     C = []  # Currently Selected sets
     R = []  # Set of Covered Line Outages
 
@@ -139,7 +137,6 @@ def high_eta(Sa,X):
     dict['Total_Outages'] = Sa_lengths
     df = pd.DataFrame(dict,index=range(1,len(Sa)+1))
 
-    print('Starting High Eta Tests.......')
     # print('------------------HIGH ETA Test-----------------------------------------')
     df = df.sort_values('Total_Outages',ascending = False)
     Eta_OTLs = []
@@ -165,7 +162,6 @@ def high_eta(Sa,X):
 #  Output
 #  rand_list: list of list containing the sets of OTLs that were selected by random (Should be 10 sets of random OTLs)
 def random_otl(Sa,X):
-    print('Starting Random OTL Tests......')
     num_lines = len(Sa)
     line_numbers = range(1,num_lines+1) 
     # print('------------------RANDOM OTL SELECTION------------------------------------')

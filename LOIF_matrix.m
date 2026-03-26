@@ -1,9 +1,6 @@
 %Run LOIF_matrix(case file name) --> Ex. LOIF_matrix('case118')
 
-function [LOIF,LODF]=LOIF_matrix(system,output_dir)
-if nargin == 1
-    output_dir = "./";
-end
+function [LOIF,LODF]=LOIF_matrix(system)
 
 mpc = loadcase(system); %
 mpc = ext2int(mpc);
@@ -39,39 +36,4 @@ for i=1:size(mpc.branch,1) %for every row
 
     end
 end
-row_labels = "";
-column_labels = "";
-for j=1:size(mpc.branch,1)
-    row_labels = strcat(row_labels,sprintf('line%d',j));
-    column_labels = strcat(column_labels,sprintf('outage%d,',j));
-end
-
-lodf_file = sprintf('%sLODFmatrix_%s.csv',output_dir,system);
-csvwrite(lodf_file, LODF);
-% Read the contents of the specified file
-S = fileread(lodf_file);
-% Open the file for writing, and check for successful opening
-FID = fopen(lodf_file, 'w');
-if FID == -1, error('Cannot open file %s', lodf_file); end
-% Write column labels to the file
-fprintf(FID, "%s\n", column_labels);
-% Write the contents read from the file back to it
-fprintf(FID, "%s", S);
-% Close the file
-fclose(FID);
-
-
-loif_file = sprintf('%sLOIFmatrix_%s.csv',output_dir,system);
-csvwrite(loif_file, LOIF_change);
-% Read the contents of the specified file
-S = fileread(loif_file);
-% Open the file for writing, and check for successful opening
-FID = fopen(loif_file, 'w');
-if FID == -1, error('Cannot open file %s', loif_file); end
-% Write column labels to the file
-fprintf(FID, "%s\n", column_labels);
-% Write the contents read from the file back to it
-fprintf(FID, "%s", S);
-% Close the file
-fclose(FID);
 end
